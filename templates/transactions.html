@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Transações - Moneyhub{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1 class="page-title">Transações</h1>
+        <a href="{{ url_for('add_transaction') }}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> Nova Transação
+        </a>
+    </div>
+
+    <!-- Filtros -->
+    <div class="glass-panel" style="margin-bottom: 2rem; padding: 1.5rem;">
+        <form method="GET" style="display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap;">
+            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                <label for="type">Tipo</label>
+                <select id="type" name="type">
+                    <option value="all" {% if current_type == 'all' %}selected{% endif %}>Todos</option>
+                    <option value="income" {% if current_type == 'income' %}selected{% endif %}>Receitas</option>
+                    <option value="expense" {% if current_type == 'expense' %}selected{% endif %}>Despesas</option>
+                </select>
+            </div>
+            
+            <div class="form-group" style="margin-bottom: 0; flex: 1; min-width: 200px;">
+                <label for="category">Categoria</label>
+                <select id="category" name="category">
+                    <option value="all" {% if current_category == 'all' %}selected{% endif %}>Todas</option>
+                    {% for category in categories %}
+                    <option value="{{ category }}" {% if current_category == category %}selected{% endif %}>
+                        {{ category }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+                <a href="{{ url_for('transactions') }}" class="btn" style="background: rgba(255,255,255,0.1); color: white;">Limpar</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Tabela de Transações -->
+    <div class="glass-panel">
+        <div class="table-container">
+            {% if transactions.items %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Data</th>
+                            <th>Descrição</th>
+                            <th>Categoria</th>
+                            <th>Valor</th>
+                            <th style="text-align: right;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for transaction in transactions.items %}
+                        <tr>
+                            <td style="color: var(--text-secondary);">{{ transaction.date.strftime('%d/%m/%Y') }}</td>
+                            <td style="font-weight: 500;">{{ transaction.description }}</td>
+                            <td>
+                                <span class="badge">{{ transaction.category }}</span>
+                            </td>
+                            <td class="{% if transaction.type == 'income' %}text-success{% else %}text-danger{% endif %}" style="font-weight: 600;">
+                                {% if transaction.type == 'income' %}+{% else %}-{% endif %} R$ {{ "%.2f"|format(transaction.amount) }}
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <a href="{{ url_for('edit_transaction', transaction_id=transaction.id) }}" class="btn" style="padding: 0.5rem; background: rgba(99, 102, 241, 0.2); color: var(--accent-primary);">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <a href="{{ url_for('delete_transaction', transaction_id=transaction.id) }}" class="btn" style="padding: 0.5rem; background: rgba(239, 68, 68, 0.2); color: var(--danger);" onclick="return confirm('Tem certeza que deseja excluir esta transação?')">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+                <!-- Paginação -->
+                <div style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--glass-border);">
+                    {% if transactions.has_prev %}
+                        <a href="{{ url_for('transactions', page=transactions.prev_num, type=current_type, category=current_category) }}" class="btn" style="background: rgba(255,255,255,0.1); color: white;">Anterior</a>
+                    {% endif %}
+                    
+                    {% for page_num in transactions.iter_pages() %}
+                        {% if page_num %}
+                            <a href="{{ url_for('transactions', page=page_num, type=current_type, category=current_category) }}" class="btn {% if page_num == transactions.page %}btn-primary{% endif %}" style="{% if page_num != transactions.page %}background: rgba(255,255,255,0.1); color: white;{% endif %}">{{ page_num }}</a>
+                        {% else %}
+                            <span class="btn" style="background: transparent; color: var(--text-secondary); cursor: default;">...</span>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if transactions.has_next %}
+                        <a href="{{ url_for('transactions', page=transactions.next_num, type=current_type, category=current_category) }}" class="btn" style="background: rgba(255,255,255,0.1); color: white;">Próxima</a>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div style="text-align: center; padding: 3rem 1rem;">
+                    <i class="bi bi-inbox" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem; display: block;"></i>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Nenhuma transação encontrada com os filtros selecionados.</p>
+                    <a href="{{ url_for('add_transaction') }}" class="btn btn-primary">
+                        Nova Transação
+                    </a>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

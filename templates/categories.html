@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Categorias - Sistema Financeiro{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 text-white fw-bold">Categorias</h1>
+</div>
+
+<div class="row">
+    <!-- Formulário para adicionar categoria -->
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0 text-light">Nova Categoria</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('add_category') }}">
+                    <div class="mb-3">
+                        <label for="name" class="form-label text-light">Nome</label>
+                        <input type="text" class="form-control" id="name" name="name" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="type" class="form-label text-light">Tipo</label>
+                        <select class="form-select" id="type" name="type" required>
+                            <option value="">Selecione o tipo...</option>
+                            <option value="income">Receita</option>
+                            <option value="expense">Despesa</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label for="color" class="form-label text-light">Cor</label>
+                        <input type="color" class="form-control" id="color" name="color" value="#6366f1" required>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary w-100">Adicionar Categoria</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Lista de categorias -->
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0 text-light">Minhas Categorias</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for category in categories %}
+                    <div class="col-md-6 mb-3">
+                        <div class="card bg-dark border-0">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex align-items-center">
+                                        <div class="rounded-circle me-3" style="width: 20px; height: 20px; background-color: {{ category.color }};"></div>
+                                        <div>
+                                            <h6 class="mb-0 text-light">{{ category.name }}</h6>
+                                            <small class="text-muted">
+                                                {% if category.type == 'income' %}
+                                                    <span class="text-success">Receita</span>
+                                                {% else %}
+                                                    <span class="text-danger">Despesa</span>
+                                                {% endif %}
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <a href="{{ url_for('delete_category', category_id=category.id) }}" 
+                                       class="btn btn-sm btn-outline-danger"
+                                       onclick="return confirm('Tem certeza que deseja excluir esta categoria?')">
+                                        <i class="bi bi-trash"></i>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="col-12 text-center py-5">
+                        <i class="bi bi-tags text-muted fs-1"></i>
+                        <h5 class="text-muted mt-3">Nenhuma categoria criada</h5>
+                        <p class="text-muted">Adicione suas primeiras categorias</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

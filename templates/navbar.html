@@ -1,0 +1,48 @@
+<aside class="sidebar glass-panel">
+    <div class="sidebar-logo">
+        <i class="bi bi-wallet2"></i>
+        <span>Moneyhub</span>
+    </div>
+    
+    <nav class="nav-links">
+        <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+            <i class="bi bi-grid-1x2"></i>
+            <span>Dashboard</span>
+        </a>
+        <a href="{{ url_for('transactions') }}" class="nav-item {% if request.endpoint == 'transactions' %}active{% endif %}">
+            <i class="bi bi-list-ul"></i>
+            <span>Transações</span>
+        </a>
+        <a href="{{ url_for('add_transaction') }}" class="nav-item {% if request.endpoint == 'add_transaction' %}active{% endif %}">
+            <i class="bi bi-plus-circle"></i>
+            <span>Nova Transação</span>
+        </a>
+        <a href="{{ url_for('profile') }}" class="nav-item {% if request.endpoint == 'profile' %}active{% endif %}">
+            <i class="bi bi-person-gear"></i>
+            <span>Meu Perfil</span>
+        </a>
+    </nav>
+
+    <div class="sidebar-footer" style="padding-top: 1rem; border-top: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 1rem;">
+        <div class="user-info" style="display: flex; align-items: center; gap: 0.75rem; padding: 0 1rem;">
+            {% if current_user.avatar %}
+                <img src="{{ url_for('static', filename=current_user.avatar) }}" alt="Avatar" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent-primary);">
+            {% else %}
+                <div class="user-avatar" style="width: 36px; height: 36px; border-radius: 50%; background: var(--accent-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 1.1rem; flex-shrink: 0;">
+                    {{ current_user.username[0]|upper }}
+                </div>
+            {% endif %}
+            <div style="display: flex; flex-direction: column; overflow: hidden;">
+                <span style="color: var(--text-primary); font-weight: 500; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">{{ current_user.username }}</span>
+                <span style="color: var(--text-secondary); font-size: 0.75rem; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">{{ current_user.email }}</span>
+            </div>
+        </div>
+        
+        <div class="nav-links">
+            <a href="{{ url_for('logout') }}" class="nav-item" style="color: #ef4444;">
+                <i class="bi bi-box-arrow-right"></i>
+                <span>Sair</span>
+            </a>
+        </div>
+    </div>
+</aside>
