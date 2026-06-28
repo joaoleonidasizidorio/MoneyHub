@@ -3,8 +3,8 @@
 
 {% block content %}
 <div class="container">
-    <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-        <div>
+    <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;">
             <h1 class="page-title" style="margin-bottom: 0.5rem;">Dashboard</h1>
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <a href="{{ url_for('dashboard', month=(selected_month-1 if selected_month > 1 else 12), year=(selected_year if selected_month > 1 else selected_year-1)) }}" style="color: var(--text-secondary); text-decoration: none; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 4px; transition: background 0.2s;"><i class="bi bi-chevron-left"></i></a>
@@ -12,9 +12,23 @@
                 <a href="{{ url_for('dashboard', month=(selected_month+1 if selected_month < 12 else 1), year=(selected_year if selected_month < 12 else selected_year+1)) }}" style="color: var(--text-secondary); text-decoration: none; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 4px; transition: background 0.2s;"><i class="bi bi-chevron-right"></i></a>
             </div>
         </div>
-        <a href="{{ url_for('add_transaction') }}" class="btn btn-primary">
-            <i class="bi bi-plus-lg"></i> Nova Transação
-        </a>
+        <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <a href="{{ url_for('report', month=selected_month, year=selected_year) }}" target="_blank" class="btn" style="background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3); display: flex; align-items: center; padding: 0.5rem 1.2rem; text-decoration: none; white-space: nowrap;">
+                <i class="bi bi-file-earmark-pdf" style="margin-right: 0.5rem;"></i> Exportar Relatório Oficial
+            </a>
+            <a href="{{ url_for('add_transaction') }}" class="btn btn-primary" style="display: flex; align-items: center; padding: 0.5rem 1.2rem;">
+                <i class="bi bi-plus-lg" style="margin-right: 0.5rem;"></i> Nova Transação
+            </a>
+        </div>
+    </div>
+    <!-- Banner de Anomalias (Oculto por padrão) -->
+    <div id="anomaly-banner" style="display: none; background-color: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 1rem 1.5rem; margin-bottom: 2rem; align-items: flex-start; gap: 1rem; animation: slideDown 0.4s ease-out;">
+        <div style="font-size: 1.5rem; line-height: 1;">🚨</div>
+        <div style="flex-grow: 1;">
+            <h4 style="color: #ef4444; margin: 0 0 0.25rem 0; font-size: 1rem;">Alerta de Anomalia de Gastos</h4>
+            <p id="anomaly-message" style="color: var(--text-primary); margin: 0; font-size: 0.95rem;"></p>
+        </div>
+        <button onclick="document.getElementById('anomaly-banner').style.display='none'" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 1.2rem; padding: 0;">&times;</button>
     </div>
 
     <!-- Cards de Estatísticas -->
@@ -46,6 +60,25 @@
             </div>
             <div class="stat-icon">
                 <i class="bi bi-wallet2"></i>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Insights IA (Forecasting) -->
+    <div class="glass-panel ai-insight-card" style="margin-top: 2rem; position: relative; overflow: hidden; border: 1px solid rgba(168, 85, 247, 0.4);">
+        <div class="ai-bg-glow"></div>
+        <div style="display: flex; align-items: flex-start; gap: 1rem; position: relative; z-index: 1;">
+            <div class="stat-icon" style="background: rgba(168, 85, 247, 0.2); color: #a855f7;">
+                <i class="bi bi-magic"></i>
+            </div>
+            <div style="flex-grow: 1;">
+                <h3 style="margin-bottom: 0.5rem; font-size: 1.1rem; color: #d8b4fe; display: flex; align-items: center; gap: 0.5rem;">
+                    Previsão Inteligente 
+                    <span class="badge" style="background: #a855f7; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px;">BETA</span>
+                </h3>
+                <div id="ai-forecast-content" class="loading-pulse">
+                    <p style="color: var(--text-secondary); margin: 0;">Analisando suas tendências de gastos para este mês...</p>
+                </div>
             </div>
         </div>
     </div>
@@ -223,7 +256,7 @@
                 cutout: '70%',
                 plugins: {
                     legend: {
-                        position: 'right',
+                        position: window.innerWidth < 1024 ? 'bottom' : 'right',
                         labels: { boxWidth: 12, padding: 15 }
                     },
                     tooltip: {
@@ -297,6 +330,47 @@
             }
         }
     });
+
+    // IA Forecasting Fetch
+    document.addEventListener('DOMContentLoaded', async function() {
+        const forecastContent = document.getElementById('ai-forecast-content');
+        try {
+            const response = await fetch('/api/forecast');
+            const data = await response.json();
+            
+            forecastContent.classList.remove('loading-pulse');
+            
+            if (response.ok && data.forecast) {
+                // Convert markdown-like bold to HTML strong if any
+                let formattedText = data.forecast.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                forecastContent.innerHTML = `<p style="margin: 0; line-height: 1.5; color: var(--text-primary);">${formattedText}</p>`;
+            } else {
+                forecastContent.innerHTML = `<p style="margin: 0; color: #ef4444; font-size: 0.9rem;">Não foi possível carregar a previsão no momento.</p>`;
+            }
+        } catch (e) {
+            forecastContent.classList.remove('loading-pulse');
+            forecastContent.innerHTML = `<p style="margin: 0; color: #ef4444; font-size: 0.9rem;">Falha ao conectar com o Assistente IA.</p>`;
+        }
+        
+        // IA Anomalies Fetch
+        try {
+            const anomalyResponse = await fetch('/api/anomalies');
+            const anomalyData = await anomalyResponse.json();
+            
+            if (anomalyResponse.ok && anomalyData.anomaly && anomalyData.anomaly !== 'TUDO NORMAL') {
+                const banner = document.getElementById('anomaly-banner');
+                const msg = document.getElementById('anomaly-message');
+                // Remove possible leading emoji since we already have one
+                let text = anomalyData.anomaly.replace(/^🚨\s*/, '');
+                msg.innerText = text;
+                banner.style.display = 'flex';
+            }
+        } catch (e) {
+            console.log("Erro ao buscar anomalias", e);
+        }
+    });
+</script>
+
 </script>
 
 {% endblock %}

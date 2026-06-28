@@ -106,6 +106,15 @@ def register():
 
     return render_template('register.html')
 
+QUOTES = [
+    "Regra nº 1: Nunca perca dinheiro. Regra nº 2: Nunca esqueça a Regra nº 1. — Warren Buffett",
+    "O dinheiro é um mestre terrível, mas um excelente servo. — P.T. Barnum",
+    "Não economize o que sobra após os gastos, mas gaste o que sobra após as economias. — Warren Buffett",
+    "Riqueza não é o que você ganha, mas o que você guarda. — Robert Kiyosaki",
+    "Um orçamento diz para onde seu dinheiro deve ir, em vez de você se perguntar para onde ele foi. — Dave Ramsey",
+    "A paz financeira não é a aquisição de coisas. É aprender a viver com menos do que você ganha. — Dave Ramsey"
+]
+
 @app.route("/login", methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -117,7 +126,9 @@ def login():
         
         if not username or not password:
             flash('Por favor, preencha todos os campos!', 'danger')
-            return render_template('login.html')
+            import random
+            quote = random.choice(QUOTES)
+            return render_template('login.html', quote=quote)
         
         user = User.query.filter_by(username=username).first()
         
@@ -128,7 +139,9 @@ def login():
         else:
             flash('Login falhou. Verifique usuário e senha.', 'danger')
     
-    return render_template('login.html')
+    import random
+    quote = random.choice(QUOTES)
+    return render_template('login.html', quote=quote)
 
 @app.route("/logout")
 @login_required
@@ -241,7 +254,53 @@ def dashboard():
                              total_income=0,
                              total_expenses=0,
                              balance=0,
-                             now=datetime.now())
+                             selected_month=datetime.now().month,
+                             selected_year=datetime.now().year,
+                             now=datetime.now(),
+                             category_expenses="{}",
+                             six_months_data="[]",
+                             budget_progress=[])
+
+@app.route("/report/<int:month>/<int:year>")
+@login_required
+def report(month, year):
+    from sqlalchemy import extract
+    from datetime import datetime
+    
+    monthly_transactions = Transaction.query.filter(
+        Transaction.user_id == current_user.id,
+        extract('month', Transaction.date) == month,
+        extract('year', Transaction.date) == year
+    ).order_by(Transaction.date).all()
+    
+    monthly_income = sum(t.amount for t in monthly_transactions if t.type == 'income' and t.is_paid)
+    monthly_expenses = sum(t.amount for t in monthly_transactions if t.type == 'expense' and t.is_paid)
+    
+    category_expenses = {}
+    for t in monthly_transactions:
+        if t.type == 'expense' and t.is_paid:
+            category_expenses[t.category] = category_expenses.get(t.category, 0) + t.amount
+
+    user_budgets = Budget.query.filter_by(user_id=current_user.id).all()
+    budget_progress = []
+    for b in user_budgets:
+        spent = category_expenses.get(b.category, 0)
+        percentage = min((spent / b.amount) * 100, 100) if b.amount > 0 else 100
+        budget_progress.append({
+            'category': b.category,
+            'amount': b.amount,
+            'spent': spent,
+            'percentage': percentage
+        })
+        
+    return render_template('report.html', 
+                         transactions=monthly_transactions,
+                         total_income=monthly_income,
+                         total_expenses=monthly_expenses,
+                         month=month,
+                         year=year,
+                         now=datetime.now(),
+                         budget_progress=budget_progress)
 
 @app.route("/transactions")
 @login_required
@@ -535,44 +594,305 @@ def scan_receipt():
             if not api_key:
                 return jsonify({'error': 'Chave de API do Gemini não configurada. Adicione-a no arquivo .env'}), 500
                 
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            import base64
+            import urllib.request
             
-            # Upload the file to Gemini
-            gemini_file = genai.upload_file(filepath)
-            
+            # Read and encode image
+            with open(filepath, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+                
             prompt = """
-            Analise esta imagem de um cupom ou nota fiscal.
-            Eu preciso que você extraia as seguintes informações e retorne EXATAMENTE um JSON válido:
+            Você é um assistente financeiro altamente preciso. Analise esta imagem de um cupom fiscal, fatura ou nota fiscal.
+            Extraia as seguintes informações e retorne EXATAMENTE neste esquema JSON (nenhum texto a mais):
             {
-                "amount": <valor total flutuante usando ponto como decimal, ex: 150.50>,
-                "description": "<nome do estabelecimento principal>",
+                "amount": <valor numérico flutuante usando ponto, ex: 150.50>,
+                "description": "<nome do estabelecimento principal (curto)>",
                 "date": "<data da compra no formato YYYY-MM-DD>",
-                "category": "<sugira uma categoria curta para essa despesa, ex: Alimentação, Transporte, Educação, Saúde, Lazer, Moradia>"
+                "category": "<sugira uma categoria curta: Alimentação, Transporte, Educação, Saúde, Lazer, Moradia, Serviços, Outros>"
             }
-            Não retorne nada além do JSON. Se não encontrar uma informação, use null.
+            Se não encontrar uma informação, retorne null no valor correspondente.
             """
             
-            response = model.generate_content([gemini_file, prompt])
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={api_key}"
             
-            # Limpar o texto para garantir que é um JSON puro
-            json_text = response.text.replace('```json', '').replace('```', '').strip()
-            data = json.loads(json_text)
+            payload = {
+                "contents": [{
+                    "parts": [
+                        {"text": prompt},
+                        {
+                            "inlineData": {
+                                "mimeType": "image/jpeg",
+                                "data": encoded_string
+                            }
+                        }
+                    ]
+                }],
+                "generationConfig": {
+                    "responseMimeType": "application/json"
+                }
+            }
+            
+            data_encoded = json.dumps(payload).encode('utf-8')
+            req = urllib.request.Request(url, data=data_encoded, headers={'Content-Type': 'application/json'})
+            
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode())
+                
+            # Extract JSON response
+            response_text = result['candidates'][0]['content']['parts'][0]['text']
+            data = json.loads(response_text)
             
             data['receipt_image_path'] = f"uploads/receipts/{final_filename}"
             
             return jsonify(data)
             
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode()
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            print(f"HTTPError: {error_body}")
+            return jsonify({'error': f"Erro da API do Gemini: {e.code}"}), 500
+            
         except Exception as e:
             if os.path.exists(filepath):
                 os.remove(filepath)
-            return jsonify({'error': f'Erro na análise do cupom: {str(e)}'}), 500
+            print(f"Exception: {str(e)}")
+            return jsonify({'error': f"Erro na análise do cupom: {str(e)}"}), 500
 
 # Inicialização do Banco de Dados
 def init_db():
     with app.app_context():
         db.create_all()
         print("✅ Banco de dados inicializado com sucesso!")
+
+@app.route("/api/chat", methods=['POST'])
+@login_required
+def chat_ai():
+    data = request.get_json()
+    user_message = data.get('message', '')
+    if not user_message:
+        return jsonify({'error': 'Mensagem vazia'}), 400
+        
+    try:
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Chave de API não configurada.'}), 500
+            
+        # Coletar dados do usuário
+        from datetime import datetime, timedelta
+        
+        # Últimos 3 meses
+        three_months_ago = datetime.now() - timedelta(days=90)
+        recent_trans = Transaction.query.filter(
+            Transaction.user_id == current_user.id,
+            Transaction.date >= three_months_ago
+        ).order_by(Transaction.date.desc()).limit(100).all()
+        
+        # Orçamentos
+        budgets = Budget.query.filter_by(user_id=current_user.id).all()
+        
+        # Calcular gastos por categoria no mês atual
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        
+        current_month_trans = [t for t in recent_trans if t.date.month == current_month and t.date.year == current_year and t.type == 'expense' and t.is_paid]
+        spent_by_category = {}
+        for t in current_month_trans:
+            spent_by_category[t.category] = spent_by_category.get(t.category, 0) + t.amount
+            
+        budget_context = "ORÇAMENTOS E GASTOS DO MÊS ATUAL:\n"
+        for b in budgets:
+            spent = spent_by_category.get(b.category, 0)
+            status = "ESTOUROU" if spent > b.amount else "DENTRO DO LIMITE"
+            budget_context += f"- {b.category}: Limite R$ {b.amount:.2f} | Gasto R$ {spent:.2f} ({status})\n"
+            
+        trans_context = "ÚLTIMAS TRANSAÇÕES:\n"
+        for t in recent_trans[:20]: # Limite reduzido para 20 para acelerar o processamento
+            tipo = "Receita" if t.type == "income" else "Despesa"
+            status = "Paga" if t.is_paid else "Pendente"
+            trans_context += f"- {t.date.strftime('%Y-%m-%d')} | {tipo} | R$ {t.amount:.2f} | {t.category} | {t.description} | {status}\n"
+            
+        system_prompt = f"""Você é o Consultor Financeiro IA do aplicativo Moneyhub.
+Sua personalidade tem duas fases:
+1. No início, e para dúvidas normais ou pequenos erros do usuário, seja extremamente amigável, encorajador e use emojis.
+2. Se você perceber que o usuário frequentemente estoura orçamentos, gasta mais do que ganha ou tenta justificar gastos ruins, mude o tom: seja frio, duro, sem emojis e dê uma "bronca" severa, agindo como um consultor rígido.
+
+Use os dados financeiros REAIS do usuário abaixo para responder a pergunta. 
+REGRA MÁXIMA: Seja EXTREMAMENTE conciso, direto e rápido na resposta. Responda no máximo em 2 ou 3 parágrafos curtos. Nunca gere textos longos.
+
+DADOS DO USUÁRIO:
+{budget_context}
+
+{trans_context}"""
+
+        import urllib.request
+        import json
+        
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={api_key}"
+        
+        payload = {
+            "systemInstruction": {
+                "parts": [{"text": system_prompt}]
+            },
+            "contents": [{
+                "parts": [{"text": user_message}]
+            }],
+            "generationConfig": {
+                "maxOutputTokens": 300,
+                "temperature": 0.5
+            }
+        }
+        
+        data_encoded = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data_encoded, headers={'Content-Type': 'application/json'})
+        
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode())
+            
+        reply_text = result['candidates'][0]['content']['parts'][0]['text']
+        return jsonify({'reply': reply_text})
+        
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        print(f"Chatbot HTTPError: {error_body}")
+        import sys
+        sys.stdout.flush()
+        return jsonify({'error': f"Erro da API do Gemini: {error_body}"}), 500
+        
+    except Exception as e:
+        print(f"Chatbot Exception: {str(e)}")
+        import sys
+        sys.stdout.flush()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/forecast', methods=['GET'])
+@login_required
+def forecast_ai():
+    try:
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Chave da API não configurada.'}), 500
+            
+        hoje = datetime.now()
+        mes_atual = hoje.month
+        ano_atual = hoje.year
+        dia_atual = hoje.day
+        import calendar
+        ultimo_dia = calendar.monthrange(ano_atual, mes_atual)[1]
+        
+        budgets = Budget.query.filter_by(user_id=current_user.id).all()
+        if not budgets:
+            return jsonify({'forecast': 'Você ainda não definiu nenhum orçamento. Crie orçamentos para eu poder analisar o ritmo dos seus gastos!'})
+            
+        transacoes_mes = Transaction.query.filter(
+            Transaction.user_id == current_user.id,
+            db.extract('month', Transaction.date) == mes_atual,
+            db.extract('year', Transaction.date) == ano_atual,
+            Transaction.type == 'expense'
+        ).all()
+        
+        gastos_por_categoria = {}
+        for t in transacoes_mes:
+            gastos_por_categoria[t.category] = gastos_por_categoria.get(t.category, 0) + t.amount
+            
+        budget_context = ""
+        for b in budgets:
+            gasto = gastos_por_categoria.get(b.category, 0)
+            budget_context += f"- {b.category}: Gasto R$ {gasto:.2f} de R$ {b.amount:.2f}\n"
+            
+        prompt = f"""
+Você é o Assistente Financeiro IA do Moneyhub.
+Hoje é dia {dia_atual} de um mês com {ultimo_dia} dias.
+Analise os orçamentos e gastos do usuário abaixo para o mês atual.
+Seu objetivo é gerar um "Alerta de Tendência" (Forecasting) muito curto e direto (apenas 1 parágrafo de até 3 linhas).
+Se o usuário estiver gastando muito rápido (ex: gastou 80% do orçamento na metade do mês), preveja o dia aproximado que o dinheiro vai acabar e dê um conselho urgente (ex: "No ritmo atual, você vai estourar o orçamento de Lazer no dia 22...").
+Se tudo estiver dentro do esperado ou não houver gastos, dê um pequeno incentivo.
+
+ORÇAMENTOS E GASTOS:
+{budget_context}
+"""
+        import urllib.request
+        import json
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 200, "temperature": 0.5}
+        }
+        
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode())
+        
+        reply_text = result['candidates'][0]['content']['parts'][0]['text']
+        return jsonify({'forecast': reply_text.strip()})
+        
+    except Exception as e:
+        print(f"Forecast Exception: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/anomalies', methods=['GET'])
+@login_required
+def check_anomalies():
+    try:
+        api_key = os.getenv('GEMINI_API_KEY')
+        if not api_key:
+            return jsonify({'error': 'Chave da API não configurada.'}), 500
+            
+        # Buscar despesas dos últimos 4 meses
+        quatro_meses_atras = datetime.now() - timedelta(days=120)
+        despesas = Transaction.query.filter(
+            Transaction.user_id == current_user.id,
+            Transaction.type == 'expense',
+            Transaction.date >= quatro_meses_atras
+        ).order_by(Transaction.date.asc()).all()
+        
+        if not despesas:
+            return jsonify({'anomaly': 'TUDO NORMAL'})
+            
+        # Agrupar por Mês/Ano para a IA entender a linha do tempo
+        historico_agrupado = {}
+        for d in despesas:
+            chave_mes = d.date.strftime('%Y-%m')
+            if chave_mes not in historico_agrupado:
+                historico_agrupado[chave_mes] = []
+            historico_agrupado[chave_mes].append(f"- {d.description} ({d.category}): R$ {d.amount:.2f}")
+            
+        contexto_transacoes = ""
+        for mes, lista in historico_agrupado.items():
+            contexto_transacoes += f"\\nMês {mes}:\\n" + "\\n".join(lista) + "\\n"
+            
+        mes_atual_str = datetime.now().strftime('%Y-%m')
+            
+        prompt = f"""
+Você é um auditor financeiro IA rigoroso.
+Analise o histórico de despesas dos últimos 4 meses do usuário abaixo. O mês atual é {mes_atual_str}.
+Seu único objetivo é encontrar "Anomalias" nas contas recorrentes (ex: Luz, Água, Internet, Assinaturas, Mercado, etc).
+Uma anomalia é um gasto no mês atual ({mes_atual_str}) que veio com um valor anormalmente alto (ex: 40% a mais ou mais) do que a média dos meses anteriores para a mesma conta.
+
+REGRA 1: Se você encontrar UMA anomalia grave, retorne APENAS UMA MENSAGEM CURTA E DIRETA começando com "🚨 ". Exemplo: "🚨 Notamos um aumento anormal de 60% na sua conta de Energia este mês. Verifique a fatura!"
+REGRA 2: Se tudo estiver normal, os aumentos forem pequenos, ou não houver dados suficientes, RETORNE EXATAMENTE AS PALAVRAS: "TUDO NORMAL" (sem aspas, sem pontos).
+
+HISTÓRICO DE DESPESAS:
+{contexto_transacoes}
+"""
+        import urllib.request
+        import json
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 100, "temperature": 0.2}
+        }
+        
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode())
+        
+        reply_text = result['candidates'][0]['content']['parts'][0]['text'].strip()
+        return jsonify({'anomaly': reply_text})
+        
+    except Exception as e:
+        print(f"Anomalies Exception: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     init_db()

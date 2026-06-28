@@ -12,7 +12,22 @@
 <body>
     {% if current_user.is_authenticated %}
         <div class="app-wrapper">
+            <!-- Mobile Overlay -->
+            <div class="mobile-overlay" id="mobile-overlay" onclick="toggleSidebar()"></div>
+            
             {% include 'navbar.html' %}
+            
+            <!-- Mobile Header (Visible only on mobile) -->
+            <div class="mobile-header">
+                <div class="mobile-logo">
+                    <i class="bi bi-wallet2"></i>
+                    <span>Moneyhub</span>
+                </div>
+                <button class="mobile-menu-btn" onclick="toggleSidebar()">
+                    <i class="bi bi-list"></i>
+                </button>
+            </div>
+
             <main class="main-content">
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% if messages %}
@@ -26,6 +41,34 @@
                 
                 {% block content %}{% endblock %}
             </main>
+            
+            <!-- Chatbot IA -->
+            <button class="chatbot-btn" id="chatbotBtn" onclick="toggleChatbot()" title="Falar com Assistente">
+                <i class="bi bi-robot"></i>
+            </button>
+
+            <div class="chatbot-window" id="chatbotWindow">
+                <div class="chat-header">
+                    <div class="chat-title">
+                        <i class="bi bi-stars"></i> Consultor Financeiro
+                    </div>
+                    <button class="close-chat" onclick="toggleChatbot()">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+                <div class="chat-messages" id="chatMessages">
+                    <div class="chat-message ai">
+                        Olá! 👋 Sou seu consultor financeiro do Moneyhub. Como posso te ajudar com suas finanças hoje?
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="Pergunte algo..." onkeypress="if(event.key === 'Enter') sendChatMessage()">
+                    <button onclick="sendChatMessage()">
+                        <i class="bi bi-send"></i>
+                    </button>
+                </div>
+            </div>
+            <!-- /Chatbot IA -->
         </div>
     {% else %}
         <div class="auth-wrapper">
@@ -45,5 +88,63 @@
     {% endif %}
 
     {% block scripts %}{% endblock %}
+    
+    <script>
+        function toggleSidebar() {
+            document.body.classList.toggle('sidebar-open');
+        }
+
+        // Chatbot Logic
+        function toggleChatbot() {
+            const chatWindow = document.getElementById('chatbotWindow');
+            chatWindow.classList.toggle('active');
+            if (chatWindow.classList.contains('active')) {
+                document.getElementById('chatInput').focus();
+            }
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+            
+            const messagesDiv = document.getElementById('chatMessages');
+            
+            // Add user message
+            const userMsg = document.createElement('div');
+            userMsg.className = 'chat-message user';
+            userMsg.textContent = text;
+            messagesDiv.appendChild(userMsg);
+            
+            input.value = '';
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Add loading indicator
+            const loadingMsg = document.createElement('div');
+            loadingMsg.className = 'chat-message ai';
+            loadingMsg.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Pensando...';
+            messagesDiv.appendChild(loadingMsg);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text })
+                });
+                const data = await response.json();
+                
+                // Replace loading indicator with real response
+                if (response.ok) {
+                    loadingMsg.innerHTML = data.reply.replace(/\n/g, '<br>');
+                } else {
+                    loadingMsg.innerHTML = '<i>' + (data.error || 'Desculpe, ocorreu um erro ao consultar seus dados.') + '</i>';
+                }
+            } catch (err) {
+                loadingMsg.innerHTML = '<i>Erro de conexão. Tente novamente mais tarde.</i>';
+            }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+    </script>
 </body>
 </html>

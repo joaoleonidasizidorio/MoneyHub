@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relatório Oficial Moneyhub - {{ "%02d"|format(month) }}/{{ year }}</title>
+    <!-- Google Fonts: Inter para visual muito corporativo -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <style>
+        /* CSS focado 100% em ser um Documento PDF Perfeito */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', Arial, sans-serif;
+            color: #1e293b;
+        }
+
+        body {
+            background-color: #ffffff;
+            padding: 2cm; /* Margem de impressão A4 */
+        }
+
+        .report-container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        /* Cabeçalho Corporativo */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            border-bottom: 2px solid #cbd5e1;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .header-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .header-brand i {
+            font-size: 2rem;
+            color: #6366f1; /* Azul corporativo da marca */
+        }
+
+        .header-brand h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            color: #0f172a;
+        }
+
+        .header-info {
+            text-align: right;
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+        
+        .header-info strong {
+            color: #0f172a;
+        }
+
+        /* Resumo Financeiro (Cards) */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .summary-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 1.2rem;
+            background: #f8fafc;
+        }
+
+        .summary-card h3 {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            color: #64748b;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .summary-card p {
+            font-size: 1.8rem;
+            font-weight: 700;
+        }
+
+        .text-income { color: #059669; }
+        .text-expense { color: #dc2626; }
+        .text-balance { color: #0f172a; }
+
+        /* Tabela de Transações */
+        .section-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #0f172a;
+            border-bottom: 1px solid #e2e8f0;
+            padding-bottom: 0.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+            font-size: 0.9rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 0.8rem;
+            background: #f1f5f9;
+            color: #475569;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            border-bottom: 2px solid #cbd5e1;
+        }
+
+        td {
+            padding: 0.8rem;
+            border-bottom: 1px solid #e2e8f0;
+            color: #334155;
+        }
+
+        .amount-pos { color: #059669; font-weight: 500; }
+        .amount-neg { color: #dc2626; font-weight: 500; }
+
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .status-paid { background: #d1fae5; color: #065f46; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+
+        /* Orçamentos */
+        .budget-list {
+            margin-bottom: 2rem;
+        }
+
+        .budget-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.8rem 0;
+            border-bottom: 1px dashed #e2e8f0;
+            font-size: 0.9rem;
+        }
+
+        /* Rodapé */
+        .footer {
+            margin-top: 3rem;
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1rem;
+        }
+
+        /* Regras de Impressão */
+        @media print {
+            body {
+                padding: 0;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .no-print {
+                display: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    
+    <!-- Botão flutuante para quem quiser imprimir de novo sem fechar -->
+    <div class="no-print" style="text-align: center; margin-bottom: 2rem; background: #f8fafc; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px;">
+        <p style="margin-bottom: 0.5rem; color: #64748b;">Este é o visual oficial de impressão corporativa.</p>
+        <button onclick="window.print()" style="background: #0f172a; color: white; border: none; padding: 0.8rem 1.5rem; border-radius: 4px; font-weight: 600; cursor: pointer;">
+            <i class="bi bi-printer"></i> Imprimir / Salvar PDF Agora
+        </button>
+    </div>
+
+    <div class="report-container">
+        <!-- Cabeçalho -->
+        <div class="header">
+            <div class="header-brand">
+                <i class="bi bi-wallet2"></i>
+                <h1>Moneyhub</h1>
+            </div>
+            <div class="header-info">
+                <p>Extrato Financeiro Oficial</p>
+                <p>Período: <strong>{{ "%02d"|format(month) }}/{{ year }}</strong></p>
+                <p>Emitido em: <strong>{{ now.strftime('%d/%m/%Y %H:%M') }}</strong></p>
+                <p>Usuário: <strong>{{ current_user.username }}</strong></p>
+            </div>
+        </div>
+
+        <!-- Resumo -->
+        <h2 class="section-title">Resumo do Período</h2>
+        <div class="summary-grid">
+            <div class="summary-card">
+                <h3>Total Receitas</h3>
+                <p class="text-income">R$ {{ "%.2f"|format(total_income) }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Total Despesas</h3>
+                <p class="text-expense">R$ {{ "%.2f"|format(total_expenses) }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Balanço Final</h3>
+                <p class="text-balance">R$ {{ "%.2f"|format(total_income - total_expenses) }}</p>
+            </div>
+        </div>
+
+        <!-- Transações -->
+        <h2 class="section-title">Detalhamento de Transações</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Data</th>
+                    <th>Descrição</th>
+                    <th>Categoria</th>
+                    <th>Status</th>
+                    <th style="text-align: right;">Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for t in transactions %}
+                <tr>
+                    <td>{{ t.date.strftime('%d/%m/%Y') }}</td>
+                    <td><strong>{{ t.description }}</strong></td>
+                    <td>{{ t.category }}</td>
+                    <td>
+                        {% if t.is_paid %}
+                            <span class="status-badge status-paid">Efetivado</span>
+                        {% else %}
+                            <span class="status-badge status-pending">Pendente</span>
+                        {% endif %}
+                    </td>
+                    <td style="text-align: right;">
+                        {% if t.type == 'income' %}
+                            <span class="amount-pos">+ R$ {{ "%.2f"|format(t.amount) }}</span>
+                        {% else %}
+                            <span class="amount-neg">- R$ {{ "%.2f"|format(t.amount) }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; color: #94a3b8; padding: 2rem;">Nenhuma transação registrada neste período.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Orçamentos -->
+        {% if budget_progress %}
+        <h2 class="section-title">Acompanhamento de Orçamentos (Limites)</h2>
+        <div class="budget-list">
+            {% for b in budget_progress %}
+            <div class="budget-item">
+                <span><strong>{{ b.category }}</strong></span>
+                <span>
+                    Gasto: R$ {{ "%.2f"|format(b.spent) }} de R$ {{ "%.2f"|format(b.amount) }} 
+                    <strong style="color: {% if b.percentage >= 90 %}#dc2626{% elif b.percentage >= 70 %}#ca8a04{% else %}#059669{% endif %}; margin-left: 1rem;">
+                        ({{ "%.1f"|format(b.percentage) }}%)
+                    </strong>
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Rodapé -->
+        <div class="footer">
+            <p>Documento gerado automaticamente pelo sistema Moneyhub de Gestão Financeira.</p>
+            <p>Página gerada para arquivamento e prestação de contas.</p>
+        </div>
+    </div>
+
+    <!-- Disparar impressão automática -->
+    <script>
+        window.onload = function() {
+            // O navegador abre a janela de impressão assim que carrega
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        };
+    </script>
+</body>
+</html>
