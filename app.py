@@ -39,6 +39,14 @@ class Transaction(db.Model):
     description = db.Column(db.String(200), nullable=False)
     date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     category = db.Column(db.String(50), nullable=False)
+    is_paid = db.Column(db.Boolean, default=True, nullable=False)
+    receipt_image = db.Column(db.String(255), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+class Budget(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(50), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
 @login_manager.user_loader
@@ -143,8 +151,8 @@ def dashboard():
         
         # Todas as transações para calcular o Saldo Global
         all_transactions = Transaction.query.filter_by(user_id=current_user.id).all()
-        global_income = sum(t.amount for t in all_transactions if t.type == 'income')
-        global_expenses = sum(t.amount for t in all_transactions if t.type == 'expense')
+        global_income = sum(t.amount for t in all_transactions if t.type == 'income' and t.is_paid)
+        global_expenses = sum(t.amount for t in all_transactions if t.type == 'expense' and t.is_paid)
         global_balance = global_income - global_expenses
         
         # Transações apenas do mês selecionado
@@ -154,13 +162,67 @@ def dashboard():
             extract('year', Transaction.date) == selected_year
         ).all()
         
-        monthly_income = sum(t.amount for t in monthly_transactions if t.type == 'income')
-        monthly_expenses = sum(t.amount for t in monthly_transactions if t.type == 'expense')
+        monthly_income = sum(t.amount for t in monthly_transactions if t.type == 'income' and t.is_paid)
+        monthly_expenses = sum(t.amount for t in monthly_transactions if t.type == 'expense' and t.is_paid)
         
-        # Transações recentes globais
-        recent_transactions = Transaction.query.filter_by(user_id=current_user.id)\
-            .order_by(Transaction.date.desc()).limit(5).all()
+        # Transações recentes do mês
+        recent_transactions = Transaction.query.filter(
+            Transaction.user_id == current_user.id,
+            extract('month', Transaction.date) == selected_month,
+            extract('year', Transaction.date) == selected_year
+        ).order_by(Transaction.date.desc()).limit(5).all()
         
+        # Gráfico de Pizza: Gastos por Categoria
+        category_expenses = {}
+        for t in monthly_transactions:
+            if t.type == 'expense' and t.is_paid:
+                category_expenses[t.category] = category_expenses.get(t.category, 0) + t.amount
+                
+        # Gráfico de Barras: Últimos 6 meses
+        import calendar
+        import json
+        
+        # Mapeamento simples de meses para PT-BR
+        meses_ptbr = {1: 'Jan', 2: 'Fev', 3: 'Mar', 4: 'Abr', 5: 'Mai', 6: 'Jun', 
+                      7: 'Jul', 8: 'Ago', 9: 'Set', 10: 'Out', 11: 'Nov', 12: 'Dez'}
+                      
+        six_months_data = []
+        for i in range(5, -1, -1):
+            m = selected_month - i
+            y = selected_year
+            while m <= 0:
+                m += 12
+                y -= 1
+            
+            month_trans = Transaction.query.filter(
+                Transaction.user_id == current_user.id,
+                extract('month', Transaction.date) == m,
+                extract('year', Transaction.date) == y
+            ).all()
+            
+            inc = sum(t.amount for t in month_trans if t.type == 'income' and t.is_paid)
+            exp = sum(t.amount for t in month_trans if t.type == 'expense' and t.is_paid)
+            
+            six_months_data.append({
+                'month': f"{meses_ptbr[m]}/{str(y)[2:]}",
+                'income': inc,
+                'expense': exp
+            })
+            
+        # Progressão de Limites (Orçamentos)
+        user_budgets = Budget.query.filter_by(user_id=current_user.id).all()
+        budget_progress = []
+        for b in user_budgets:
+            spent = category_expenses.get(b.category, 0)
+            percentage = min((spent / b.amount) * 100, 100) if b.amount > 0 else 100
+            budget_progress.append({
+                'id': b.id,
+                'category': b.category,
+                'amount': b.amount,
+                'spent': spent,
+                'percentage': percentage
+            })
+            
         return render_template('dashboard.html', 
                              transactions=recent_transactions,
                              total_income=monthly_income,
@@ -168,7 +230,10 @@ def dashboard():
                              balance=global_balance,
                              selected_month=selected_month,
                              selected_year=selected_year,
-                             now=now)
+                             now=now,
+                             category_expenses=json.dumps(category_expenses),
+                             six_months_data=json.dumps(six_months_data),
+                             budget_progress=budget_progress)
     except Exception as e:
         flash(f'Erro ao carregar dashboard: {str(e)}', 'danger')
         return render_template('dashboard.html', 
@@ -237,8 +302,23 @@ def add_transaction():
                 description=description,
                 category=category,
                 date=date,
+                is_paid=request.form.get('is_paid') == 'on',
                 author=current_user
             )
+            
+            receipt_image_path = request.form.get('receipt_image_path')
+            
+            if receipt_image_path:
+                transaction.receipt_image = receipt_image_path
+            elif 'receipt_image' in request.files:
+                file = request.files['receipt_image']
+                if file and file.filename != '':
+                    filename = secure_filename(f"receipt_{current_user.id}_{datetime.now().timestamp()}_{file.filename}")
+                    upload_folder = os.path.join(app.root_path, 'static', 'uploads', 'receipts')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    transaction.receipt_image = f"uploads/receipts/{filename}"
             
             db.session.add(transaction)
             db.session.commit()
@@ -275,6 +355,17 @@ def edit_transaction(transaction_id):
             
             if date_str:
                 transaction.date = datetime.strptime(date_str, '%Y-%m-%d')
+            transaction.is_paid = request.form.get('is_paid') == 'on'
+            
+            if 'receipt_image' in request.files:
+                file = request.files['receipt_image']
+                if file and file.filename != '':
+                    filename = secure_filename(f"receipt_{current_user.id}_{datetime.now().timestamp()}_{file.filename}")
+                    upload_folder = os.path.join(app.root_path, 'static', 'uploads', 'receipts')
+                    os.makedirs(upload_folder, exist_ok=True)
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    transaction.receipt_image = f"uploads/receipts/{filename}"
             
             db.session.commit()
             flash('Transação atualizada com sucesso!', 'success')
@@ -306,6 +397,62 @@ def delete_transaction(transaction_id):
     flash('Transação excluída com sucesso!', 'success')
     
     return redirect(url_for('transactions'))
+
+@app.route("/toggle_payment/<int:transaction_id>", methods=['POST'])
+@login_required
+def toggle_payment(transaction_id):
+    transaction = Transaction.query.get_or_404(transaction_id)
+    if transaction.user_id != current_user.id:
+        flash('Acesso negado.', 'danger')
+        return redirect(request.referrer or url_for('transactions'))
+    
+    transaction.is_paid = not transaction.is_paid
+    db.session.commit()
+    flash(f'Status atualizado com sucesso!', 'success')
+    
+    return redirect(request.referrer or url_for('transactions'))
+
+@app.route("/budgets", methods=['GET', 'POST'])
+@login_required
+def budgets():
+    if request.method == 'POST':
+        try:
+            category = request.form.get('category')
+            amount = float(request.form.get('amount'))
+            
+            existing_budget = Budget.query.filter_by(user_id=current_user.id, category=category).first()
+            if existing_budget:
+                existing_budget.amount = amount
+                flash(f'Limite de {category} atualizado!', 'success')
+            else:
+                new_budget = Budget(category=category, amount=amount, user_id=current_user.id)
+                db.session.add(new_budget)
+                flash(f'Limite para {category} criado com sucesso!', 'success')
+                
+            db.session.commit()
+            return redirect(url_for('budgets'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao salvar orçamento: {str(e)}', 'danger')
+            
+    user_budgets = Budget.query.filter_by(user_id=current_user.id).order_by(Budget.category).all()
+    user_categories = db.session.query(Transaction.category).filter_by(user_id=current_user.id).distinct().all()
+    categories = [cat[0] for cat in user_categories]
+    
+    return render_template('budgets.html', budgets=user_budgets, categories=categories)
+
+@app.route("/delete_budget/<int:budget_id>", methods=['POST'])
+@login_required
+def delete_budget(budget_id):
+    budget = Budget.query.get_or_404(budget_id)
+    if budget.user_id != current_user.id:
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('budgets'))
+        
+    db.session.delete(budget)
+    db.session.commit()
+    flash('Orçamento removido!', 'success')
+    return redirect(url_for('budgets'))
 
 @app.route("/profile", methods=['GET', 'POST'])
 @login_required
@@ -377,7 +524,10 @@ def scan_receipt():
     
     if file:
         filename = secure_filename(file.filename)
-        filepath = os.path.join('/app/uploads', filename)
+        upload_folder = os.path.join(app.root_path, 'static', 'uploads', 'receipts')
+        os.makedirs(upload_folder, exist_ok=True)
+        final_filename = f"receipt_ocr_{current_user.id}_{datetime.now().timestamp()}_{filename}"
+        filepath = os.path.join(upload_folder, final_filename)
         file.save(filepath)
         
         try:
@@ -397,7 +547,8 @@ def scan_receipt():
             {
                 "amount": <valor total flutuante usando ponto como decimal, ex: 150.50>,
                 "description": "<nome do estabelecimento principal>",
-                "date": "<data da compra no formato YYYY-MM-DD>"
+                "date": "<data da compra no formato YYYY-MM-DD>",
+                "category": "<sugira uma categoria curta para essa despesa, ex: Alimentação, Transporte, Educação, Saúde, Lazer, Moradia>"
             }
             Não retorne nada além do JSON. Se não encontrar uma informação, use null.
             """
@@ -408,8 +559,7 @@ def scan_receipt():
             json_text = response.text.replace('```json', '').replace('```', '').strip()
             data = json.loads(json_text)
             
-            # Limpar o arquivo temporário
-            os.remove(filepath)
+            data['receipt_image_path'] = f"uploads/receipts/{final_filename}"
             
             return jsonify(data)
             

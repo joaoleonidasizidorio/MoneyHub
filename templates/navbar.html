@@ -13,6 +13,10 @@
             <i class="bi bi-list-ul"></i>
             <span>Transações</span>
         </a>
+        <a href="{{ url_for('budgets') }}" class="nav-item {% if request.endpoint == 'budgets' %}active{% endif %}">
+            <i class="bi bi-bullseye"></i>
+            <span>Orçamentos</span>
+        </a>
         <a href="{{ url_for('add_transaction') }}" class="nav-item {% if request.endpoint == 'add_transaction' %}active{% endif %}">
             <i class="bi bi-plus-circle"></i>
             <span>Nova Transação</span>

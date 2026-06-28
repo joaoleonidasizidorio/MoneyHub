@@ -5,8 +5,12 @@
 <div class="container">
     <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
         <div>
-            <h1 class="page-title">Dashboard</h1>
-            <p style="color: var(--text-secondary); margin-top: 0.25rem;">Visão geral de {{ "%02d"|format(selected_month) }}/{{ selected_year }}</p>
+            <h1 class="page-title" style="margin-bottom: 0.5rem;">Dashboard</h1>
+            <div style="display: flex; align-items: center; gap: 1rem;">
+                <a href="{{ url_for('dashboard', month=(selected_month-1 if selected_month > 1 else 12), year=(selected_year if selected_month > 1 else selected_year-1)) }}" style="color: var(--text-secondary); text-decoration: none; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 4px; transition: background 0.2s;"><i class="bi bi-chevron-left"></i></a>
+                <p style="color: var(--text-secondary); margin: 0; font-weight: 500;">Visão geral de {{ "%02d"|format(selected_month) }}/{{ selected_year }}</p>
+                <a href="{{ url_for('dashboard', month=(selected_month+1 if selected_month < 12 else 1), year=(selected_year if selected_month < 12 else selected_year+1)) }}" style="color: var(--text-secondary); text-decoration: none; padding: 0.2rem 0.6rem; background: rgba(255,255,255,0.05); border-radius: 4px; transition: background 0.2s;"><i class="bi bi-chevron-right"></i></a>
+            </div>
         </div>
         <a href="{{ url_for('add_transaction') }}" class="btn btn-primary">
             <i class="bi bi-plus-lg"></i> Nova Transação
@@ -46,6 +50,67 @@
         </div>
     </div>
 
+    <!-- Gráficos de Analytics -->
+    <div class="analytics-grid" style="display: grid; grid-template-columns: 1fr 2fr; gap: 1.5rem; margin-top: 2rem;">
+        
+        <!-- Gráfico de Donut: Categoria de Despesas -->
+        <div class="glass-panel" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+            <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: var(--text-primary); width: 100%;">Despesas por Categoria</h3>
+            <div style="position: relative; height: 250px; width: 100%; display: flex; justify-content: center;">
+                <canvas id="categoryChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Gráfico de Barras: 6 meses -->
+        <div class="glass-panel" style="padding: 1.5rem;">
+            <h3 style="margin-bottom: 1rem; font-size: 1.1rem; color: var(--text-primary);">Fluxo de Caixa (Últimos 6 Meses)</h3>
+            <div style="position: relative; height: 250px; width: 100%;">
+                <canvas id="sixMonthsChart"></canvas>
+            </div>
+        </div>
+        
+    </div>
+
+    <style>
+        @media (max-width: 768px) {
+            .analytics-grid {
+                grid-template-columns: 1fr !important;
+            }
+        }
+    </style>
+
+    <!-- Limites de Orçamentos -->
+    {% if budget_progress %}
+    <div class="glass-panel" style="margin-top: 2rem; padding: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h3 style="margin: 0; font-size: 1.25rem;">Limites de Gastos</h3>
+            <a href="{{ url_for('budgets') }}" style="font-size: 0.9rem; font-weight: 500;"><i class="bi bi-gear"></i> Gerenciar</a>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem;">
+            {% for bp in budget_progress %}
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); border-radius: 12px; padding: 1rem;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                    <span style="font-weight: 500; font-size: 1rem;">{{ bp.category }}</span>
+                    <span style="font-size: 0.9rem; font-weight: bold; color: {% if bp.percentage >= 80 %}#ef4444{% elif bp.percentage >= 50 %}#f59e0b{% else %}#10b981{% endif %};">
+                        {{ "%.0f"|format(bp.percentage) }}%
+                    </span>
+                </div>
+                
+                <div style="background: rgba(255,255,255,0.1); border-radius: 99px; height: 8px; width: 100%; overflow: hidden; margin-bottom: 0.5rem;">
+                    <div style="height: 100%; width: {{ bp.percentage }}%; border-radius: 99px; background: {% if bp.percentage >= 80 %}#ef4444{% elif bp.percentage >= 50 %}#f59e0b{% else %}#10b981{% endif %}; transition: width 0.5s ease;"></div>
+                </div>
+                
+                <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-secondary);">
+                    <span>Gasto: R$ {{ "%.2f"|format(bp.spent) }}</span>
+                    <span>Limite: R$ {{ "%.2f"|format(bp.amount) }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Transações Recentes -->
     <div class="glass-panel" style="margin-top: 2rem;">
         <div class="page-header" style="padding: 1.5rem 1.5rem 0 1.5rem; margin-bottom: 0;">
@@ -61,7 +126,9 @@
                             <th>Data</th>
                             <th>Descrição</th>
                             <th>Categoria</th>
+                            <th>Status</th>
                             <th>Valor</th>
+                            <th style="text-align: right;">Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -72,8 +139,29 @@
                             <td>
                                 <span class="badge">{{ transaction.category }}</span>
                             </td>
+                            <td>
+                                {% if transaction.is_paid %}
+                                    <span class="badge" style="background: rgba(16, 185, 129, 0.2); color: #10b981;">Pago</span>
+                                {% else %}
+                                    <span class="badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">Pendente</span>
+                                {% endif %}
+                            </td>
                             <td class="{% if transaction.type == 'income' %}text-success{% else %}text-danger{% endif %}" style="font-weight: 600;">
                                 {% if transaction.type == 'income' %}+{% else %}-{% endif %} R$ {{ "%.2f"|format(transaction.amount) }}
+                            </td>
+                            <td style="text-align: right;">
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <form action="{{ url_for('toggle_payment', transaction_id=transaction.id) }}" method="POST" style="margin: 0;">
+                                        <button type="submit" class="btn" style="padding: 0.5rem; background: {% if transaction.is_paid %}rgba(255,255,255,0.05){% else %}rgba(16, 185, 129, 0.2){% endif %}; color: {% if transaction.is_paid %}var(--text-secondary){% else %}#10b981{% endif %};" title="{% if transaction.is_paid %}Marcar como Pendente{% else %}Dar Baixa{% endif %}">
+                                            <i class="bi bi-check-circle{% if transaction.is_paid %}-fill{% endif %}"></i>
+                                        </button>
+                                    </form>
+                                    {% if transaction.receipt_image %}
+                                    <a href="{{ url_for('static', filename=transaction.receipt_image) }}" target="_blank" class="btn" style="padding: 0.5rem; background: rgba(255,255,255,0.1); color: var(--text-primary);" title="Ver Comprovante">
+                                        <i class="bi bi-paperclip"></i>
+                                    </a>
+                                    {% endif %}
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}
@@ -82,7 +170,7 @@
             {% else %}
                 <div style="text-align: center; padding: 3rem 1rem;">
                     <i class="bi bi-inbox" style="font-size: 3rem; color: var(--text-secondary); margin-bottom: 1rem; display: block;"></i>
-                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Nenhuma transação registrada ainda.</p>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">Nenhuma transação registrada neste mês.</p>
                     <a href="{{ url_for('add_transaction') }}" class="btn btn-primary">
                         Comece a registrar
                     </a>
@@ -90,5 +178,125 @@
             {% endif %}
         </div>
     </div>
+    </div>
 </div>
+
+<script src="{{ url_for('static', filename='js/chart.js') }}"></script>
+<script>
+    // Paleta de cores vibrantes estilo Glassmorphism/Dark Mode
+    const chartColors = [
+        'rgba(99, 102, 241, 0.8)',   // Indigo
+        'rgba(236, 72, 153, 0.8)',   // Pink
+        'rgba(16, 185, 129, 0.8)',   // Emerald
+        'rgba(245, 158, 11, 0.8)',   // Amber
+        'rgba(139, 92, 246, 0.8)',   // Violet
+        'rgba(14, 165, 233, 0.8)',   // Sky
+        'rgba(239, 68, 68, 0.8)'     // Red
+    ];
+    const chartBorders = chartColors.map(color => color.replace('0.8', '1'));
+
+    // Configurações Globais do Chart.js para Dark Mode
+    Chart.defaults.color = 'rgba(255, 255, 255, 0.6)';
+    Chart.defaults.font.family = "'Inter', sans-serif";
+
+    // 1. Gráfico de Categoria (Donut)
+    const categoryData = {{ category_expenses|safe }};
+    const catLabels = Object.keys(categoryData);
+    const catValues = Object.values(categoryData);
+
+    if(catLabels.length > 0) {
+        new Chart(document.getElementById('categoryChart'), {
+            type: 'doughnut',
+            data: {
+                labels: catLabels,
+                datasets: [{
+                    data: catValues,
+                    backgroundColor: chartColors,
+                    borderColor: 'rgba(15, 23, 42, 1)', // match background
+                    borderWidth: 2,
+                    hoverOffset: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: { boxWidth: 12, padding: 15 }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.raw || 0;
+                                return ' R$ ' + value.toFixed(2);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } else {
+        // Fallback vazio
+        document.getElementById('categoryChart').parentElement.innerHTML = '<div style="display:flex; height:100%; align-items:center; color:var(--text-secondary);">Sem dados no mês.</div>';
+    }
+
+    // 2. Gráfico de Fluxo de Caixa (Barras)
+    const sixMonthsRaw = {{ six_months_data|safe }};
+    const labels = sixMonthsRaw.map(d => d.month);
+    const incomeData = sixMonthsRaw.map(d => d.income);
+    const expenseData = sixMonthsRaw.map(d => d.expense);
+
+    new Chart(document.getElementById('sixMonthsChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Receitas',
+                    data: incomeData,
+                    backgroundColor: 'rgba(16, 185, 129, 0.8)', // Emerald
+                    borderRadius: 4
+                },
+                {
+                    label: 'Despesas',
+                    data: expenseData,
+                    backgroundColor: 'rgba(239, 68, 68, 0.8)', // Red
+                    borderRadius: 4
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: {
+                    grid: { display: false, drawBorder: false }
+                },
+                y: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)', drawBorder: false },
+                    ticks: {
+                        callback: function(value) { return 'R$ ' + value; }
+                    }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    align: 'end'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let value = context.raw || 0;
+                            return context.dataset.label + ': R$ ' + value.toFixed(2);
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+
 {% endblock %}

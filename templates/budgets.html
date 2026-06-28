@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Orçamentos - Moneyhub{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 800px; margin: 0 auto;">
+    <div class="page-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+        <h1 class="page-title" style="font-size: 1.5rem; margin: 0;">
+            <i class="bi bi-bullseye" style="margin-right: 0.5rem;"></i>Meus Orçamentos (Tetos de Gastos)
+        </h1>
+    </div>
+
+    <div class="glass-panel" style="padding: 2.5rem; margin-bottom: 2rem;">
+        <h3 style="margin-top: 0; margin-bottom: 1.5rem;">Criar ou Editar Limite</h3>
+        <form method="POST">
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <div class="form-group" style="flex: 1; min-width: 200px;">
+                    <label for="category">Categoria</label>
+                    <input type="text" id="category" name="category" placeholder="Ex: Lazer" required list="category-list">
+                    <datalist id="category-list">
+                        {% for category in categories %}
+                        <option value="{{ category }}">
+                        {% endfor %}
+                    </datalist>
+                </div>
+                
+                <div class="form-group" style="flex: 1; min-width: 200px;">
+                    <label for="amount">Limite Máximo (R$ por mês)</label>
+                    <input type="number" step="0.01" id="amount" name="amount" placeholder="500,00" required>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Salvar Orçamento</button>
+        </form>
+    </div>
+
+    <h3 style="margin-bottom: 1rem;">Limites Atuais</h3>
+    <div class="glass-panel" style="padding: 0; overflow: hidden;">
+        <table class="data-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+                <tr>
+                    <th style="padding: 1rem; text-align: left; border-bottom: 1px solid var(--border-color);">Categoria</th>
+                    <th style="padding: 1rem; text-align: right; border-bottom: 1px solid var(--border-color);">Limite Mensal</th>
+                    <th style="padding: 1rem; text-align: center; border-bottom: 1px solid var(--border-color);">Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for budget in budgets %}
+                <tr>
+                    <td style="padding: 1rem; border-bottom: 1px solid var(--border-color);">
+                        <span class="category-badge">{{ budget.category }}</span>
+                    </td>
+                    <td style="padding: 1rem; text-align: right; border-bottom: 1px solid var(--border-color); font-weight: 500;">
+                        R$ {{ "%.2f"|format(budget.amount) }}
+                    </td>
+                    <td style="padding: 1rem; text-align: center; border-bottom: 1px solid var(--border-color);">
+                        <form action="{{ url_for('delete_budget', budget_id=budget.id) }}" method="POST" style="display: inline;" onsubmit="return confirm('Excluir limite?');">
+                            <button type="submit" class="btn" style="padding: 0.5rem; background: rgba(239, 68, 68, 0.2); color: #ef4444;">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" style="padding: 2rem; text-align: center; color: var(--text-secondary);">
+                        Nenhum limite cadastrado. Comece adicionando um acima!
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
